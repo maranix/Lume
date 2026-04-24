@@ -1,0 +1,13 @@
+[package]
+name = "lume-worker"
+version = "0.1.0"
+edition = "2021"
+authors = ["maranix <ramanverma4183@gmail.com>"]
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+url = "2.5.8"
+worker = { version = "0.8" }
+worker-macros = { version = "0.8" }
