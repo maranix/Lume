@@ -4,3 +4,16 @@ compatibility_date = "2026-04-23"
 
 [build]
 command = "cargo install -q \"worker-build@^0.8\" && worker-build --release"
+
+[observability]
+enabled = true
+head_sampling_rate = 0.1 # Capture 10% of total traffic globally
+
+[observability.logs]
+enabled = true
+persist = true
+invocation_logs = true
+
+[observability.traces]
+enabled = true
+head_sampling_rate = 0.01

@@ -3,10 +3,7 @@ use worker::*;
 
 #[event(fetch)]
 async fn fetch(req: Request, env: Env, _ctx: Context) -> Result<Response> {
-    let token = env
-        .secret("TMDB_ACCESS_TOKEN")
-        .map(|a| a.to_string())
-        .unwrap_or_default();
+    let token = env.secret("TMDB_ACCESS_TOKEN")?.to_string();
 
     let params = &req.url()?[Position::BeforePath..];
     let uri = format!("https://api.themoviedb.org/3{}", params);
@@ -14,17 +11,19 @@ async fn fetch(req: Request, env: Env, _ctx: Context) -> Result<Response> {
     let h = Headers::new();
     h.set("Authorization", &format!("Bearer {}", token))?;
 
-    get(&uri, h).await
-}
+    for (key, val) in req.headers() {
+        if !key.eq_ignore_ascii_case("host") {
+            h.set(&key, &val)?;
+        }
+    }
 
-async fn get(uri: &str, headers: Headers) -> Result<Response> {
-    let mut init = RequestInit::new();
-    init.with_method(Method::Get);
-    init.with_headers(headers);
-
-    let req = Request::new_with_init(&uri, &init).unwrap();
-
-    let res = Fetch::Request(req).send().await.unwrap();
-
-    Ok(res)
+    Fetch::Request(Request::new_with_init(
+        &uri,
+        RequestInit::new()
+            .with_method(req.method())
+            .with_headers(h)
+            .with_body(req.inner().body().clone().map(|b| b.into())),
+    )?)
+    .send()
+    .await
 }
