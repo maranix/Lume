@@ -1,70 +1,131 @@
+// import 'dart:io';
+
 import 'dart:io';
 
 import 'package:code_assets/code_assets.dart';
 import 'package:hooks/hooks.dart';
 
-const _pluginName = 'hello';
-const _assetName = 'plugins/hello/hello.dart';
-
-void main(List<String> args) async {
-  await build(args, (input, output) async {
-    if (!input.config.buildCodeAssets) {
-      return;
-    }
-
-    final pluginRoot = Directory.fromUri(
-      input.packageRoot.resolve('plugins/$_pluginName/'),
-    );
-    final cargoTargetDir = Directory.fromUri(
-      input.outputDirectoryShared.resolve('cargo/$_pluginName/'),
-    )..createSync(recursive: true);
-
-    final target = _rustTargetTriple(
-      os: input.config.code.targetOS,
-      architecture: input.config.code.targetArchitecture,
-    );
-    final libraryFileName = input.config.code.targetOS.dylibFileName(
-      _pluginName,
-    );
-    await _ensureRustTargetInstalled(target);
-
-    final buildResult = await Process.run(
-      'cargo',
-      ['build', '--release', '--target', target],
-      workingDirectory: pluginRoot.path,
-      environment: {'CARGO_TARGET_DIR': cargoTargetDir.path},
-    );
-
-    if (buildResult.exitCode != 0) {
-      throw ProcessException(
-        'cargo',
-        ['build', '--release', '--target', target],
-        '${buildResult.stdout}\n${buildResult.stderr}',
-        buildResult.exitCode,
-      );
-    }
-
-    final compiledLibrary = File.fromUri(
-      cargoTargetDir.uri.resolve('$target/release/$libraryFileName'),
-    );
-    if (!compiledLibrary.existsSync()) {
-      throw StateError(
-        'Expected compiled library at ${compiledLibrary.path}, but it was not produced.',
-      );
-    }
-
-    output.assets.code.add(
-      CodeAsset(
-        package: input.packageName,
-        name: _assetName,
-        linkMode: DynamicLoadingBundled(),
-        file: compiledLibrary.absolute.uri,
-      ),
-    );
+final class PluginMetadata {
+  const PluginMetadata({
+    required this.name,
+    required this.os,
+    required this.arch,
+    required this.target,
+    required this.dir,
   });
+
+  final String name;
+  final OS os;
+  final Architecture arch;
+  final String target;
+  final Directory dir;
+
+  String get libraryName => os.dylibFileName(name);
+
+  @override
+  String toString() =>
+      "PluginMetadata(name: $name, os: ${os.name}, arch: ${arch.name}, target: $target, dir: $dir)";
 }
 
-String _rustTargetTriple({
+void main(List<String> args) async {
+  await build(
+    args,
+    (input, output) async {
+      if (!input.config.buildCodeAssets) {
+        return;
+      }
+
+      final os = input.config.code.targetOS;
+      final arch = input.config.code.targetArchitecture;
+      final target = _rustCompilationTarget(os: os, architecture: arch);
+
+      final pluginOutDir = Directory.fromUri(
+        input.packageRoot.resolve("assets/plugins"),
+      )..createSync(recursive: true);
+
+      final metadatas =
+          Directory.fromUri(
+                input.packageRoot.resolve("plugins"),
+              )
+              .listSync()
+              .where((e) => e.statSync().type == .directory)
+              .map((e) => Directory.fromUri(e.uri))
+              .map<PluginMetadata>(
+                (d) => .new(
+                  name: d.uri.pathSegments[d.uri.pathSegments.length - 2],
+                  os: os,
+                  arch: arch,
+                  target: target,
+                  dir: d,
+                ),
+              );
+
+      for (final metadata in metadatas) {
+        try {
+          final buildDir = Directory.fromUri(
+            input.outputDirectoryShared.resolve("plugins/${metadata.name}"),
+          )..createSync(recursive: true);
+
+          final outDir = Directory.fromUri(
+            pluginOutDir.uri.resolve(
+              "${metadata.name}/${os.name}/",
+            ),
+          )..createSync(recursive: true);
+
+          final result = await Process.run(
+            "cargo",
+            ["build", "--release", "--target", metadata.target],
+            workingDirectory: metadata.dir.path,
+            environment: {
+              "CARGO_TARGET_DIR": buildDir.path,
+            },
+          );
+
+          if (result.exitCode != 0) {
+            throw ProcessException(
+              'cargo',
+              ['build', '--release', '--target', target],
+              '${result.stdout}\n${result.stderr}',
+              result.exitCode,
+            );
+          }
+
+          final plugin = File.fromUri(
+            buildDir.uri.resolve(
+              "${metadata.target}/release/${metadata.libraryName}",
+            ),
+          );
+
+          if (!plugin.existsSync()) {
+            throw StateError(
+              'Expected compiled library at ${plugin.path}, but it was not produced.',
+            );
+          }
+
+          final dest = File.fromUri(
+            outDir.uri.resolve(metadata.libraryName),
+          );
+
+          if (dest.existsSync()) {
+            dest.deleteSync();
+          }
+
+          dest.parent.createSync(recursive: true);
+
+          plugin.copySync(dest.path);
+        } catch (e) {
+          throw ProcessException(
+            'cargo',
+            ['build', '--release', '--target', target],
+            "${metadata.name}\n${e.toString()}",
+          );
+        }
+      }
+    },
+  );
+}
+
+String _rustCompilationTarget({
   required OS os,
   required Architecture architecture,
 }) {
@@ -89,46 +150,4 @@ String _rustTargetTriple({
       'Rust build is not configured for ${os.name}/${architecture.name}.',
     ),
   };
-}
-
-Future<void> _ensureRustTargetInstalled(String target) async {
-  final installedTargets = await Process.run('rustup', [
-    'target',
-    'list',
-    '--installed',
-  ]);
-
-  if (installedTargets.exitCode != 0) {
-    throw ProcessException(
-      'rustup',
-      ['target', 'list', '--installed'],
-      '${installedTargets.stdout}\n${installedTargets.stderr}',
-      installedTargets.exitCode,
-    );
-  }
-
-  final installed = (installedTargets.stdout as String)
-      .split('\n')
-      .map((line) => line.trim())
-      .where((line) => line.isNotEmpty)
-      .toSet();
-
-  if (installed.contains(target)) {
-    return;
-  }
-
-  final activeToolchain = await Process.run('rustup', [
-    'show',
-    'active-toolchain',
-  ]);
-  final toolchainDescription = activeToolchain.exitCode == 0
-      ? (activeToolchain.stdout as String).trim()
-      : 'unknown';
-
-  throw StateError(
-    'Rust target "$target" is required for plugin "$_pluginName", but it is not installed.\n'
-    'Active toolchain: $toolchainDescription\n'
-    'Installed targets: ${installed.toList()..sort()}\n'
-    'Install it with: rustup target add $target',
-  );
 }
