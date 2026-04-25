@@ -40,7 +40,7 @@ final class CounterProvider extends $NotifierProvider<Counter, int> {
   }
 }
 
-String _$counterHash() => r'c077ac21a0a7894fde7f4917cb2fbc67fa91c6a9';
+String _$counterHash() => r'bfae457ed80a2766371809bef70dc5d914084b92';
 
 abstract class _$Counter extends $Notifier<int> {
   int build();

@@ -1,3 +1,4 @@
+import 'package:lume/hello.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'counter_provider.g.dart';
@@ -7,6 +8,6 @@ final class Counter extends _$Counter {
   @override
   int build() => 0;
 
-  void increment() => state++;
-  void decrement() => state--;
+  void increment() => state = helloAdd(state, 1);
+  void decrement() => state = helloAdd(state, -1);
 }
