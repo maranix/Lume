@@ -1,0 +1,27 @@
+name: lume
+description: "A new Flutter project."
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.11.0
+
+dependencies:
+  async: ^2.13.1
+  collection: ^1.19.1
+  dart_mappable: ^4.8.0
+  flutter:
+    sdk: flutter
+  flutter_riverpod: ^3.3.1
+  riverpod_annotation: ^4.0.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  build_runner: ^2.14.1
+  riverpod_generator: ^4.0.3
+  dart_mappable_builder: ^4.7.0
+
+flutter:
+  uses-material-design: true
