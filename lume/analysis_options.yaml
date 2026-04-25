@@ -1,6 +1,6 @@
 include: package:flutter_lints/flutter.yaml
 
-format:
+formatter:
   trailing_commas: preserve
 
 plugins:
